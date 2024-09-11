@@ -212,7 +212,7 @@ err_shortcut!(
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, Read, Seek, SeekFrom, Write};
+    use std::io::{Cursor, ErrorKind, Read, Seek, SeekFrom, Write};
 
     use super::IoWindow;
 
@@ -324,6 +324,21 @@ mod tests {
             .get_ref()
             .iter()
             .eq([0; 160].iter().chain(&[42; 32]).chain(&[0; 320])));
+        Ok(())
+    }
+
+    #[test]
+    fn copy() -> std::io::Result<()> {
+        let from = b"meow meow meow meow";
+        let mut to = IoWindow::new(Cursor::new([0; 32]), 0..24)?;
+        std::io::copy(&mut &from[..], &mut to)?;
+
+        let mut to = IoWindow::new(Cursor::new([0; 32]), 0..8)?;
+        assert_eq!(
+            std::io::copy(&mut &from[..], &mut to).unwrap_err().kind(),
+            ErrorKind::WriteZero
+        );
+
         Ok(())
     }
 }
