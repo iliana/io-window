@@ -1,5 +1,5 @@
-//! This library contains [`IoWindow`], an I/O adapter for a stream of bytes
-//! that limits operations within a byte range.
+//! This library contains `IoWindow`, an I/O adapter for a stream of bytes that
+//! limits operations within a byte range.
 //!
 //! An `IoWindow` is conceptually similar to a mutable slice, applied to
 //! a reader or writer. Given a byte range `start..end`, position 0 of the
