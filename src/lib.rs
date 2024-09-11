@@ -1,9 +1,60 @@
+//! This library contains [`IoWindow`], an I/O adapter for a stream of bytes
+//! that limits operations within a byte range.
+//!
+//! An `IoWindow` is conceptually similar to a mutable slice, applied to
+//! a reader or writer. Given a byte range `start..end`, position 0 of the
+//! `IoWindow` is position `start` of the underlying object; the end position of
+//! the `IoWindow` is position `start + end` of the underlying object; and the
+//! length of the `IoWindow` is `end - start`.
+//!
+//! ```
+//! # use std::io::prelude::*;
+//! use io_window::IoWindow;
+//!
+//! # fn main() -> std::io::Result<()> {
+//! let stream = std::io::Cursor::new([0; 8]);
+//! let mut window = IoWindow::new(stream, 2..6)?;
+//! assert_eq!(window.write(&[42; 16])?, 4);
+//! assert_eq!(
+//!     window.into_inner().into_inner(),
+//!     [0, 0, 42, 42, 42, 42, 0, 0]
+//! );
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! One use of this library is operating within a partition of a disk image.
+//! For instance, if you have a filesystem implementation that uses a
+//! `Read + Write + Seek` object, you can use `IoWindow` to avoid needing to
+//! copy a disk image's partition into memory or another file, or reaching for a
+//! memory-mapped buffer.
+//!
+//! ```
+//! # use std::fs::File;
+//! # use io_window::IoWindow;
+//! const MEBIBYTE: u64 = 1024 * 1024;
+//!
+//! # fn main() -> std::io::Result<()> {
+//! # let disk = "/dev/null";
+//! let file = File::open(disk)?;
+//! let mut partition = IoWindow::new(file, MEBIBYTE..(64 * MEBIBYTE))?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! It's also possible to provide a range with an unbounded end. If you were
+//! working with a file with a header that you needed the ability to modify and
+//! append to, you could use a range like `1024..` to create an `IoWindow` from
+//! position 1024 to the end of the file.
+
 #![warn(clippy::pedantic)]
 
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::{Bound, RangeBounds};
 
 /// Seekable I/O adapter that limits operations to a byte range.
+///
+/// For more, see the [crate documentation](self).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct IoWindow<T: Seek> {
     inner: T,
@@ -20,8 +71,11 @@ impl<T: Seek> IoWindow<T> {
     /// A range with an unbounded start (for example, `..1024`) is treated as
     /// starting at `0`.
     ///
-    /// A range with an unbounded end (for example, `1024..`) allows for
-    /// appending to the underlying object if it supports it.
+    /// A range with an unbounded end (for example, `1024..`) means
+    /// the window ends at the end of the stream. Writing past the end
+    /// of the window is supported if the underlying object can grow
+    /// its length (some examples include [`File`](std::fs::File) and
+    /// [`Cursor<Vec<u8>>`][std::io::Cursor]).
     ///
     /// # Errors
     ///
@@ -57,7 +111,7 @@ impl<T: Seek> IoWindow<T> {
     ///
     /// It is a logic error to seek the object earlier than the start of the
     /// window. If you're not absolutely certain that code using this mutable
-    /// reference is upholding this requirement, call [`Seek::rewind`] on this
+    /// reference upholds this requirement, call [`Seek::rewind`] on this
     /// adapter immediately after using the mutable reference.
     pub fn get_mut(&mut self) -> &mut T {
         &mut self.inner
@@ -234,15 +288,42 @@ mod tests {
     fn range_unbounded() -> std::io::Result<()> {
         let v = Cursor::new(Vec::new());
         let mut window = IoWindow::new(v, 128..)?;
+
         assert_eq!(window.inner.stream_position()?, 128);
         assert_eq!(window.inner.get_ref().len(), 0);
         window.write_all(b"meow")?;
         assert_eq!(window.inner.get_ref().len(), 132);
-        window.seek(SeekFrom::Start(0))?;
-        let mut buf = [0; 4];
-        assert_eq!(window.read(&mut buf[..])?, 4);
-        assert_eq!(&buf, b"meow");
 
+        window.seek(SeekFrom::Start(0))?;
+        let mut buf = [0; 8];
+        assert_eq!(window.read(&mut buf[..])?, 4);
+        assert_eq!(&buf[..4], b"meow");
+
+        Ok(())
+    }
+
+    #[test]
+    fn zero_range() -> std::io::Result<()> {
+        let mut window = IoWindow::new(Cursor::new(Vec::new()), 0..0)?;
+        assert_eq!(window.write(&[0; 4])?, 0);
+        assert_eq!(window.read(&mut [0; 4])?, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn wrapped() -> std::io::Result<()> {
+        let inner = IoWindow::new(Cursor::new([0; 512]), 128..256)?;
+        let mut window = IoWindow::new(inner, 32..64)?;
+        assert_eq!(window.write(&[42; 128])?, 32);
+        assert_eq!(window.stream_position()?, 32);
+        let mut inner = window.into_inner();
+        assert_eq!(inner.stream_position()?, 64);
+        let mut cursor = inner.into_inner();
+        assert_eq!(cursor.stream_position()?, 192);
+        assert!(cursor
+            .get_ref()
+            .iter()
+            .eq([0; 160].iter().chain(&[42; 32]).chain(&[0; 320])));
         Ok(())
     }
 }
