@@ -1,0 +1,8 @@
+[package]
+name = "io-window"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.56"
+description = "Seekable I/O adapter that limits operations to a byte range"
+repository = "https://github.com/iliana/io-window"
+license = "MPL-2.0"
