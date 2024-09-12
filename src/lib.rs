@@ -12,7 +12,7 @@
 //! use io_window::IoWindow;
 //!
 //! # fn main() -> std::io::Result<()> {
-//! let stream = std::io::Cursor::new([0; 8]);
+//! let stream = std::io::Cursor::new(vec![0; 8]);
 //! let mut window = IoWindow::new(stream, 2..6)?;
 //! assert_eq!(window.write(&[42; 16])?, 4);
 //! assert_eq!(
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn wrapped() -> std::io::Result<()> {
-        let inner = IoWindow::new(Cursor::new([0; 512]), 128..256)?;
+        let inner = IoWindow::new(Cursor::new(vec![0; 512]), 128..256)?;
         let mut window = IoWindow::new(inner, 32..64)?;
         assert_eq!(window.write(&[42; 128])?, 32);
         assert_eq!(window.stream_position()?, 32);
@@ -330,10 +330,10 @@ mod tests {
     #[test]
     fn copy() -> std::io::Result<()> {
         let from = b"meow meow meow meow";
-        let mut to = IoWindow::new(Cursor::new([0; 32]), 0..24)?;
+        let mut to = IoWindow::new(Cursor::new(vec![0; 32]), 0..24)?;
         std::io::copy(&mut &from[..], &mut to)?;
 
-        let mut to = IoWindow::new(Cursor::new([0; 32]), 0..8)?;
+        let mut to = IoWindow::new(Cursor::new(vec![0; 32]), 0..8)?;
         assert_eq!(
             std::io::copy(&mut &from[..], &mut to).unwrap_err().kind(),
             ErrorKind::WriteZero
