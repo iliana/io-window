@@ -6,3 +6,5 @@ rust-version = "1.56"
 description = "Seekable I/O adapter that limits operations to a byte range"
 repository = "https://github.com/iliana/io-window"
 license = "MPL-2.0"
+keywords = ["io", "slice", "range", "partition"]
+categories = ["rust-patterns"]
